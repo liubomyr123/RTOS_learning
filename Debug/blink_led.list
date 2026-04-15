@@ -7,19 +7,19 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
   1 .text         00003f24  080001b0  080001b0  000011b0  2**4
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  2 .rodata       000000e0  080040d4  080040d4  000050d4  2**2
+  2 .rodata       000000ec  080040d4  080040d4  000050d4  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  3 .ARM.extab    00000000  080041b4  080041b4  00006008  2**0
+  3 .ARM.extab    00000000  080041c0  080041c0  00006008  2**0
                   CONTENTS, READONLY
-  4 .ARM          00000008  080041b4  080041b4  000051b4  2**2
+  4 .ARM          00000008  080041c0  080041c0  000051c0  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  5 .preinit_array 00000000  080041bc  080041bc  00006008  2**0
+  5 .preinit_array 00000000  080041c8  080041c8  00006008  2**0
                   CONTENTS, ALLOC, LOAD, DATA
-  6 .init_array   00000004  080041bc  080041bc  000051bc  2**2
+  6 .init_array   00000004  080041c8  080041c8  000051c8  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  7 .fini_array   00000004  080041c0  080041c0  000051c0  2**2
+  7 .fini_array   00000004  080041cc  080041cc  000051cc  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  8 .data         00000008  20000000  080041c4  00006000  2**2
+  8 .data         00000008  20000000  080041d0  00006000  2**2
                   CONTENTS, ALLOC, LOAD, DATA
   9 .ccmram       00000000  10000000  10000000  00006008  2**0
                   CONTENTS
@@ -29,25 +29,25 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
  12 .ARM.attributes 00000030  00000000  00000000  00006008  2**0
                   CONTENTS, READONLY
- 13 .debug_info   0000a2d2  00000000  00000000  00006038  2**0
+ 13 .debug_info   0000a2d1  00000000  00000000  00006038  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_abbrev 00001f64  00000000  00000000  0001030a  2**0
+ 14 .debug_abbrev 00001f7d  00000000  00000000  00010309  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_aranges 00000c40  00000000  00000000  00012270  2**3
+ 15 .debug_aranges 00000c40  00000000  00000000  00012288  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_rnglists 0000092d  00000000  00000000  00012eb0  2**0
+ 16 .debug_rnglists 0000092d  00000000  00000000  00012ec8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_macro  00020cfd  00000000  00000000  000137dd  2**0
+ 17 .debug_macro  00020cfd  00000000  00000000  000137f5  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_line   0000a873  00000000  00000000  000344da  2**0
+ 18 .debug_line   0000a877  00000000  00000000  000344f2  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .debug_str    000b63c0  00000000  00000000  0003ed4d  2**0
+ 19 .debug_str    000b63c0  00000000  00000000  0003ed69  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 20 .comment      00000043  00000000  00000000  000f510d  2**0
+ 20 .comment      00000043  00000000  00000000  000f5129  2**0
                   CONTENTS, READONLY
- 21 .debug_frame  0000326c  00000000  00000000  000f5150  2**2
+ 21 .debug_frame  0000326c  00000000  00000000  000f516c  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 22 .debug_line_str 0000005b  00000000  00000000  000f83bc  2**0
+ 22 .debug_line_str 0000005b  00000000  00000000  000f83d8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -1348,8 +1348,8 @@ __STATIC_INLINE void LL_TIM_OC_DisableFast(TIM_TypeDef *TIMx, uint32_t Channel)
  8000abc:	f85d 7b04 	ldr.w	r7, [sp], #4
  8000ac0:	4770      	bx	lr
  8000ac2:	bf00      	nop
- 8000ac4:	0800418c 	.word	0x0800418c
- 8000ac8:	08004194 	.word	0x08004194
+ 8000ac4:	08004198 	.word	0x08004198
+ 8000ac8:	080041a0 	.word	0x080041a0
 
 08000acc <LL_TIM_OC_EnablePreload>:
   *         @arg @ref LL_TIM_CHANNEL_CH3
@@ -1423,8 +1423,8 @@ __STATIC_INLINE void LL_TIM_OC_EnablePreload(TIM_TypeDef *TIMx, uint32_t Channel
  8000b44:	46bd      	mov	sp, r7
  8000b46:	f85d 7b04 	ldr.w	r7, [sp], #4
  8000b4a:	4770      	bx	lr
- 8000b4c:	0800418c 	.word	0x0800418c
- 8000b50:	08004194 	.word	0x08004194
+ 8000b4c:	08004198 	.word	0x08004198
+ 8000b50:	080041a0 	.word	0x080041a0
 
 08000b54 <LL_TIM_SetClockSource>:
   *         @arg @ref LL_TIM_CLOCKSOURCE_EXT_MODE1
@@ -3417,10 +3417,11 @@ void StartDefaultTask(void const * argument)
  8001692:	b084      	sub	sp, #16
  8001694:	af00      	add	r7, sp, #0
  8001696:	6078      	str	r0, [r7, #4]
-  /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
+	  // 2. (OK)							- wrong
+	  // 3. (hellohellohellohellohello		- wrong
+	  // 4. )OK)							- wrong
+	  // 5. ((ON)							- wrong
+	  // 6. (ON)							- good
 	 if (LL_USART_IsActiveFlag_RXNE(USART1))
  8001698:	4845      	ldr	r0, [pc, #276]	@ (80017b0 <StartDefaultTask+0x120>)
  800169a:	f7ff fab9 	bl	8000c10 <LL_USART_IsActiveFlag_RXNE>
@@ -3570,7 +3571,7 @@ void StartDefaultTask(void const * argument)
  8001764:	2b00      	cmp	r3, #0
  8001766:	d103      	bne.n	8001770 <StartDefaultTask+0xe0>
 				 {
-					 UART1_SendString("Already OFF\r\n");
+					 UART1_SendString("Already OFF ------111 \r\n");
  8001768:	481c      	ldr	r0, [pc, #112]	@ (80017dc <StartDefaultTask+0x14c>)
  800176a:	f7ff fb43 	bl	8000df4 <UART1_SendString>
  800176e:	e019      	b.n	80017a4 <StartDefaultTask+0x114>
@@ -3631,10 +3632,10 @@ void StartDefaultTask(void const * argument)
  80017d4:	0800412c 	.word	0x0800412c
  80017d8:	08004138 	.word	0x08004138
  80017dc:	08004140 	.word	0x08004140
- 80017e0:	08004150 	.word	0x08004150
- 80017e4:	0800415c 	.word	0x0800415c
- 80017e8:	08004160 	.word	0x08004160
- 80017ec:	08004174 	.word	0x08004174
+ 80017e0:	0800415c 	.word	0x0800415c
+ 80017e4:	08004168 	.word	0x08004168
+ 80017e8:	0800416c 	.word	0x0800416c
+ 80017ec:	08004180 	.word	0x08004180
 
 080017f0 <NMI_Handler>:
 /******************************************************************************/
@@ -3884,7 +3885,7 @@ LoopFillZerobss:
   ldr r1, =_edata
  80018a0:	20000008 	.word	0x20000008
   ldr r2, =_sidata
- 80018a4:	080041c4 	.word	0x080041c4
+ 80018a4:	080041d0 	.word	0x080041d0
   ldr r2, =_sbss
  80018a8:	20000008 	.word	0x20000008
   ldr r4, =_ebss
@@ -5181,7 +5182,7 @@ uint32_t RCC_GetHCLKClockFreq(uint32_t SYSCLK_Frequency)
  800201a:	46bd      	mov	sp, r7
  800201c:	bd80      	pop	{r7, pc}
  800201e:	bf00      	nop
- 8002020:	0800419c 	.word	0x0800419c
+ 8002020:	080041a8 	.word	0x080041a8
 
 08002024 <RCC_GetPCLK1ClockFreq>:
   * @brief  Return PCLK1 clock frequency
@@ -5210,7 +5211,7 @@ uint32_t RCC_GetPCLK1ClockFreq(uint32_t HCLK_Frequency)
  8002042:	46bd      	mov	sp, r7
  8002044:	bd80      	pop	{r7, pc}
  8002046:	bf00      	nop
- 8002048:	080041ac 	.word	0x080041ac
+ 8002048:	080041b8 	.word	0x080041b8
 
 0800204c <RCC_GetPCLK2ClockFreq>:
   * @brief  Return PCLK2 clock frequency
@@ -5239,7 +5240,7 @@ uint32_t RCC_GetPCLK2ClockFreq(uint32_t HCLK_Frequency)
  800206a:	46bd      	mov	sp, r7
  800206c:	bd80      	pop	{r7, pc}
  800206e:	bf00      	nop
- 8002070:	080041ac 	.word	0x080041ac
+ 8002070:	080041b8 	.word	0x080041b8
 
 08002074 <RCC_PLL_GetFreqDomain_SYS>:
   * @brief  Return PLL clock frequency used for system domain
@@ -8354,7 +8355,7 @@ BaseType_t xReturn;
  80032da:	46bd      	mov	sp, r7
  80032dc:	bd80      	pop	{r7, pc}
  80032de:	bf00      	nop
- 80032e0:	08004184 	.word	0x08004184
+ 80032e0:	08004190 	.word	0x08004190
  80032e4:	0800367d 	.word	0x0800367d
  80032e8:	200003b4 	.word	0x200003b4
  80032ec:	200003b0 	.word	0x200003b0
@@ -10869,10 +10870,10 @@ uint8_t *puc;
  80040a6:	4798      	blx	r3
  80040a8:	3601      	adds	r6, #1
  80040aa:	e7f2      	b.n	8004092 <__libc_init_array+0x1e>
- 80040ac:	080041bc 	.word	0x080041bc
- 80040b0:	080041bc 	.word	0x080041bc
- 80040b4:	080041bc 	.word	0x080041bc
- 80040b8:	080041c0 	.word	0x080041c0
+ 80040ac:	080041c8 	.word	0x080041c8
+ 80040b0:	080041c8 	.word	0x080041c8
+ 80040b4:	080041c8 	.word	0x080041c8
+ 80040b8:	080041cc 	.word	0x080041cc
 
 080040bc <_init>:
  80040bc:	b5f8      	push	{r3, r4, r5, r6, r7, lr}

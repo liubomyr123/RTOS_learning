@@ -1,0 +1,22 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "STM32 Debug (Flash + Run)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "stlink",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/Debug/blink_led.elf",
+            "runToEntryPoint": "main",
+            "device": "STM32F407VG",
+            "interface": "swd",
+            "svdFile": ""
+        }
+
+    ]
+}

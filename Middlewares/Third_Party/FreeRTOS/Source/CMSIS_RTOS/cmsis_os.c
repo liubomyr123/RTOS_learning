@@ -26,7 +26,7 @@
  *  
  *----------------------------------------------------------------------------
  *
- * Portions Copyright ï¿½ 2016 STMicroelectronics International N.V. All rights reserved.
+ * Portions Copyright © 2016 STMicroelectronics International N.V. All rights reserved.
  * Portions Copyright (c) 2013 ARM LIMITED
  * All rights reserved.
  * Redistribution and use in source and binary forms, with or without
@@ -205,26 +205,16 @@ osThreadId osThreadCreate (const osThreadDef_t *thread_def, void *argument)
   
 #if( configSUPPORT_STATIC_ALLOCATION == 1 ) &&  ( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
   if((thread_def->buffer != NULL) && (thread_def->controlblock != NULL)) {
-    handle = xTaskCreateStatic(
-    				(TaskFunction_t)thread_def->pthread,
-					(const portCHAR *)thread_def->name,
-					thread_def->stacksize,
-					argument,
-					makeFreeRtosPriority(thread_def->tpriority),
-					thread_def->buffer,
-					thread_def->controlblock);
+    handle = xTaskCreateStatic((TaskFunction_t)thread_def->pthread,(const portCHAR *)thread_def->name,
+              thread_def->stacksize, argument, makeFreeRtosPriority(thread_def->tpriority),
+              thread_def->buffer, thread_def->controlblock);
   }
   else {
-    if (xTaskCreate(
-    		(TaskFunction_t)thread_def->pthread,
-			(const portCHAR *)thread_def->name,
-			thread_def->stacksize,
-			argument,
-			makeFreeRtosPriority(thread_def->tpriority),
-            &handle) != pdPASS)
-    {
-    	return NULL;
-    }
+    if (xTaskCreate((TaskFunction_t)thread_def->pthread,(const portCHAR *)thread_def->name,
+              thread_def->stacksize, argument, makeFreeRtosPriority(thread_def->tpriority),
+              &handle) != pdPASS)  {
+      return NULL;
+    } 
   }
 #elif( configSUPPORT_STATIC_ALLOCATION == 1 )
 
