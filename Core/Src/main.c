@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdint.h>
 #include <string.h>
 /* USER CODE END Includes */
 
@@ -42,9 +43,17 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-osThreadId defaultTaskHandle;
+// TaskHandle_t defaultTaskHandle;
 /* USER CODE BEGIN PV */
+QueueHandle_t cmdQueueHandle;
+QueueHandle_t rxQueueHandle;
+QueueHandle_t txQueueHandle;
 
+TaskHandle_t uartRxTaskHandle;
+TaskHandle_t uartTxTaskHandle;
+TaskHandle_t commandTaskHandle;
+
+SemaphoreHandle_t uartMutex;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -56,11 +65,9 @@ static void MX_USART1_UART_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
+void UartRxTask(void const * argument);
+void UartTxTask(void const * argument);
+void CommandTask(void const * argument);
 
 void UART1_SendByte(uint8_t data)
 {
@@ -69,21 +76,45 @@ void UART1_SendByte(uint8_t data)
     LL_USART_TransmitData8(USART1, data);
 }
 
-//uint8_t UART1_ReceiveByte(void)
-//{
-//    // Чекаємо поки прийде новий байт
-//    while (!LL_USART_IsActiveFlag_RXNE(USART1));
-//    return LL_USART_ReceiveData8(USART1);
-//}
+void USART1_IRQHandler(void)
+{
+  if (LL_USART_IsActiveFlag_RXNE(USART1)) // Receive Not Empty
+  {
+      uint8_t rx = LL_USART_ReceiveData8(USART1);
+
+      BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+      // UART1_SendByte(rx);
+
+      xQueueSendFromISR(rxQueueHandle, &rx, &xHigherPriorityTaskWoken);
+      portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+
+      // osMessagePut(rxQueueHandle, (uint32_t)rx, 0);
+  }
+}
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+// void UART1_SendByte(uint8_t data)
+// {
+//     // Чекаємо, поки передавач готовий
+//     while (!LL_USART_IsActiveFlag_TXE(USART1));
+//     LL_USART_TransmitData8(USART1, data);
+// }
 
 void UART1_SendString(const char* str)
 {
-    while(*str)
-    {
-        UART1_SendByte(*str++);
-    }
+  xSemaphoreTake(uartMutex, portMAX_DELAY);
+  while(*str)
+  {
+      UART1_SendByte(*str++);
+  }
+  xSemaphoreGive(uartMutex);
 }
 #define CMD_BUFFER_SIZE 16
+#define TX_BUFFER_SIZE 64
 char cmdBuffer[CMD_BUFFER_SIZE];
 uint8_t cmdIndex = 0;
 uint8_t start_flag = 0;
@@ -97,6 +128,28 @@ void cleanupBuffers()
 	start_flag = 0;
 	end_flag = 0;
 }
+
+typedef struct {
+    char data[CMD_BUFFER_SIZE];
+} Command_t;
+
+typedef struct {
+    char data[TX_BUFFER_SIZE];
+} TxMessage_t;
+
+// static unsigned portBASE_TYPE makeFreeRtosPriority (osPriority priority)
+// {
+//   unsigned portBASE_TYPE fpriority = tskIDLE_PRIORITY;
+  
+//   if (priority != osPriorityError) {
+//     fpriority += (priority - osPriorityIdle); 
+//     // osPriorityRealtime:  0 + (2 - (-3)) = 0 + (2 + 3) =    5 -> it is ok, max prio value is configMAX_PRIORITIES = 7
+//     // osPriorityIdle:      0 + (-3 - (-3)) = 0 + (-3 + 3) =  0 -> it is ok, max prio value is configMAX_PRIORITIES = 7
+//     // osPriorityNormal:    0 + (0 - (-3)) = 0 + (0 + 3) =    3 -> it is ok, max prio value is configMAX_PRIORITIES = 7
+//   }
+  
+//   return fpriority;
+// }
 
 /* USER CODE END 0 */
 
@@ -143,12 +196,17 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  UART1_SendString("STM32 LL UART ready!\r\n");
+  LL_USART_EnableIT_RXNE(USART1);
+  NVIC_SetPriority(USART1_IRQn, 7);
+  NVIC_EnableIRQ(USART1_IRQn);
+
+  // UART1_SendString("STM32 LL UART ready!\r\n");
 
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
+  uartMutex = xSemaphoreCreateMutex();
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -161,19 +219,91 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
+  // osMessageQDef(rxQueue, 32, uint8_t);
+  // osMessageQDef(cmdQueue, 5, Command_t);
+  // // const osMessageQDef_t q_def_cmdQueue = { 5, Command_t, NULL, NULL };
+  // osMessageQDef(txQueue, 5, TxMessage_t);
+
+  // rxQueueHandle = osMessageCreate(osMessageQ(rxQueue), NULL);
+  // cmdQueueHandle = osMessageCreate(osMessageQ(cmdQueue), NULL);
+  // // cmdQueueHandle = xQueueCreate(q_def_cmdQueue.queue_sz, q_def_cmdQueue.item_sz);
+  // txQueueHandle  = osMessageCreate(osMessageQ(txQueue), NULL);
+  UART1_SendString("STM32 LL UART ready!\r\n");
+
+  rxQueueHandle  = xQueueCreate(32, sizeof(uint8_t));
+  if (rxQueueHandle == NULL) 
+  {
+    UART1_SendString("UartRxTask Queue create FAILED\r\n");
+    Error_Handler();
+  }
+  cmdQueueHandle = xQueueCreate(5, sizeof(Command_t));
+  if (cmdQueueHandle == NULL) 
+  {
+    UART1_SendString("CommandTask Queue create FAILED\r\n");
+    Error_Handler();
+  }
+  txQueueHandle  = xQueueCreate(5, sizeof(TxMessage_t));
+  if (txQueueHandle == NULL) 
+  {
+    UART1_SendString("UartTxTask Queue create FAILED\r\n");
+    Error_Handler();
+  }
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  // osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  // defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  osThreadDef(uartRxTask, UartRxTask, osPriorityNormal, 0, 256);
+  // const osThreadDef_t t_def_uartRxTask = { "uartRxTask", UartRxTask, osPriorityNormal, 0, 256, NULL, NULL };
+  uartRxTaskHandle = osThreadCreate(osThread(uartRxTask), NULL);
+  if (uartRxTaskHandle == NULL)
+  {
+    UART1_SendString("uartRxTaskHandle: FAIL\r\n");
+  }
+  // if(xTaskCreate(
+  //     (TaskFunction_t)t_def_uartRxTask->pthread,
+  //     (const portCHAR *)t_def_uartRxTask->name,
+  //     t_def_uartRxTask->stacksize, 
+  //     NULL, 
+  //     makeFreeRtosPriority(t_def_uartRxTask->tpriority),
+  //     &uartRxTaskHandle
+  // ) != pdPASS)
+  // {
+  //   // Error: errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY
+  //   Error_Handler();
+  // }
+
+  /**
+  | Компонент       | Памʼять     |
+  | --------------- | ----------- |
+  | Stack задач     | 2048 B      |   256 words * 4 bytes = 1024 bytes * 2 = 2048 bytes
+  | TCB             | 400 B       |   ~200 bytes * 2 = ~400 bytes
+  | Queue           | 290 B       |   Queue Control Block (QCB) = ~80 bytes * 2 = 160 bytes + rxQueueHandle: 32 * 8 bytes / cmdQueueHandle: 5 * 16 bytes + alignments
+  | Kernel overhead | 400 B       |   configMINIMAL_STACK_SIZE = 128 => 128 words × 4 bytes = 512 bytes
+  | **Total**       | **3000+ B** |   
+  */
+
+  osThreadDef(commandTask, CommandTask, osPriorityNormal, 0, 256);
+  commandTaskHandle = osThreadCreate(osThread(commandTask), NULL);
+  if (commandTaskHandle == NULL)
+  {
+    UART1_SendString("commandTaskHandle: FAIL\r\n");
+  }
+  osThreadDef(uartTxTask, UartTxTask, osPriorityLow, 0, 256);
+  uartTxTaskHandle = osThreadCreate(osThread(uartTxTask), NULL);
+  if (uartTxTaskHandle == NULL)
+  {
+    UART1_SendString("uartTxTaskHandle: FAIL\r\n");
+  }
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
   osKernelStart();
+  // vTaskStartScheduler();
 
   /* We should never get here as control is now taken by the scheduler */
 
@@ -716,7 +846,138 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void UartRxTask(void const * argument)
+{
+  (void)argument;
 
+  UART1_SendString("UartRxTask started\r\n");
+
+  for(;;)
+  {
+	  // 1. hello							- wrong
+	  // 2. (OK)							- wrong
+	  // 3. (hellohellohellohellohello		- wrong
+	  // 4. )OK)							- wrong
+	  // 5. ((ON)							- wrong
+	  // 6. (ON)							- good
+    uint8_t rx;
+    // UART1_SendString("111\r\n");
+    if (xQueueReceive(rxQueueHandle, &rx, portMAX_DELAY) == pdPASS)
+    {
+      // UART1_SendString("222\r\n");
+      if (rx == '(') 	// Check if symbol is start of command
+      {
+        if (start_flag == 1) 	// If we already started our command
+        {
+          cleanupBuffers(); 	// Clean
+          continue;			// Command is wrong, continue to listen on commands
+        }
+        start_flag = 1;		// Good, it is a start of command
+      }
+      if (start_flag == 0)		// If first symbol is not a start of command
+      {
+        continue;				// Skip and continue to listen on commands
+      }
+      if (rx == ')') 	// If we reach end of command
+      {
+        end_flag = 1;
+      }
+
+      if (cmdIndex < CMD_BUFFER_SIZE - 1)	// We have limited buffer size
+      {
+        cmdBuffer[cmdIndex++] = rx;
+        cmdBuffer[cmdIndex] = '\0';
+      }
+      else // If we got too many symbols, clean and continue to listen on commands
+      {
+        cleanupBuffers();
+        continue;
+      }
+      
+      if (start_flag == 1 && end_flag == 1)					// If we saved full command
+      {
+        Command_t command;
+        strncpy(command.data, cmdBuffer, CMD_BUFFER_SIZE);
+        
+        if (xQueueSend(cmdQueueHandle, &command, 0) != pdPASS)
+        {
+          UART1_SendString("cmdQueue FULL\r\n");
+        }
+
+        cleanupBuffers();									// After we got command, we clear and continue to listen on new commands
+      }
+    }
+  }
+}
+
+void CommandTask(void const * argument)
+{
+  (void)argument;
+  UART1_SendString("CommandTask started\r\n");
+  for(;;)
+  {
+    TxMessage_t txMessage;
+    Command_t cmd;
+    if (xQueueReceive(cmdQueueHandle, &cmd, portMAX_DELAY) == pdPASS)
+    {
+      cmd.data[CMD_BUFFER_SIZE - 1] = '\0';
+
+      if (strcmp(cmd.data, "(ON)") == 0)
+      {
+        if (led_on == 1)
+        {
+          strncpy(txMessage.data, "Already ON\r\n", TX_BUFFER_SIZE);
+        }
+        else
+        {
+          LL_GPIO_SetOutputPin(GPIOG, LL_GPIO_PIN_13);
+          led_on = 1;
+          strncpy(txMessage.data, "LED ON\r\n", TX_BUFFER_SIZE);
+        }
+      }
+      else if (strcmp(cmd.data, "(OFF)") == 0)
+      {
+        if (led_on == 1)
+        {
+          LL_GPIO_ResetOutputPin(GPIOG, LL_GPIO_PIN_13);
+          led_on = 0;
+          strncpy(txMessage.data, "LED OFF\r\n", TX_BUFFER_SIZE);
+        }
+        else
+        {
+          strncpy(txMessage.data, "Already OFF\r\n", TX_BUFFER_SIZE);
+        }
+      }
+      else if (strcmp(cmd.data, "()") == 0)
+      {
+        strncpy(txMessage.data, "Command is empty\r\n", TX_BUFFER_SIZE);
+      }
+      else
+      {
+        strncpy(txMessage.data, "Wrong command\r\n", TX_BUFFER_SIZE);
+      }
+
+      if (xQueueSend(txQueueHandle, &txMessage, 0) != pdPASS)
+      {
+        UART1_SendString("txQueue FULL\r\n");
+      }
+    }
+  }
+}
+
+void UartTxTask(void const * argument)
+{
+  (void)argument;
+  UART1_SendString("UartTxTask started\r\n");
+  for(;;)
+  {
+    TxMessage_t txMessage;
+    if (xQueueReceive(txQueueHandle, &txMessage, portMAX_DELAY) == pdPASS)
+    {
+      UART1_SendString(txMessage.data);
+    }
+  }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -729,6 +990,7 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
+  (void)argument;
   /* Infinite loop */
   for(;;)
   {
@@ -773,8 +1035,6 @@ void StartDefaultTask(void const * argument)
 
 		 if (start_flag == 1 && end_flag == 1)					// If we saved full command
 		 {
-//			 UART1_SendString(cmdBuffer);
-
 			 if (strcmp(cmdBuffer, "(ON)") == 0)
 			 {
 				 if (led_on == 1)
