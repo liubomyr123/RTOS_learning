@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,7 +44,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-// TaskHandle_t defaultTaskHandle;
+// osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 QueueHandle_t cmdQueueHandle;
 QueueHandle_t rxQueueHandle;
@@ -59,6 +60,7 @@ SemaphoreHandle_t uartMutex;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART1_UART_Init(void);
@@ -69,6 +71,7 @@ void UartRxTask(void const * argument);
 void UartTxTask(void const * argument);
 void CommandTask(void const * argument);
 
+static void process_byte(uint8_t rx);
 void UART1_SendByte(uint8_t data)
 {
     // Чекаємо, поки передавач готовий
@@ -76,33 +79,14 @@ void UART1_SendByte(uint8_t data)
     LL_USART_TransmitData8(USART1, data);
 }
 
-void USART1_IRQHandler(void)
-{
-  if (LL_USART_IsActiveFlag_RXNE(USART1)) // Receive Not Empty
-  {
-      uint8_t rx = LL_USART_ReceiveData8(USART1);
-
-      BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-
-      // UART1_SendByte(rx);
-
-      xQueueSendFromISR(rxQueueHandle, &rx, &xHigherPriorityTaskWoken);
-      portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-
-      // osMessagePut(rxQueueHandle, (uint32_t)rx, 0);
-  }
-}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// void UART1_SendByte(uint8_t data)
-// {
-//     // Чекаємо, поки передавач готовий
-//     while (!LL_USART_IsActiveFlag_TXE(USART1));
-//     LL_USART_TransmitData8(USART1, data);
-// }
+#define DMA_RX_BUFFER_SIZE 64
+
+uint8_t dmaRxBuffer[DMA_RX_BUFFER_SIZE];
 
 void UART1_SendString(const char* str)
 {
@@ -136,20 +120,6 @@ typedef struct {
 typedef struct {
     char data[TX_BUFFER_SIZE];
 } TxMessage_t;
-
-// static unsigned portBASE_TYPE makeFreeRtosPriority (osPriority priority)
-// {
-//   unsigned portBASE_TYPE fpriority = tskIDLE_PRIORITY;
-  
-//   if (priority != osPriorityError) {
-//     fpriority += (priority - osPriorityIdle); 
-//     // osPriorityRealtime:  0 + (2 - (-3)) = 0 + (2 + 3) =    5 -> it is ok, max prio value is configMAX_PRIORITIES = 7
-//     // osPriorityIdle:      0 + (-3 - (-3)) = 0 + (-3 + 3) =  0 -> it is ok, max prio value is configMAX_PRIORITIES = 7
-//     // osPriorityNormal:    0 + (0 - (-3)) = 0 + (0 + 3) =    3 -> it is ok, max prio value is configMAX_PRIORITIES = 7
-//   }
-  
-//   return fpriority;
-// }
 
 /* USER CODE END 0 */
 
@@ -191,12 +161,21 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  LL_USART_EnableDMAReq_RX(USART1);
+  LL_DMA_SetDataLength(DMA2, LL_DMA_STREAM_2, DMA_RX_BUFFER_SIZE);
 
-  LL_USART_EnableIT_RXNE(USART1);
+  LL_DMA_SetPeriphAddress(DMA2, LL_DMA_STREAM_2, (uint32_t)&USART1->DR);
+  LL_DMA_SetMemoryAddress(DMA2, LL_DMA_STREAM_2, (uint32_t)dmaRxBuffer);
+  LL_DMA_SetDataLength(DMA2, LL_DMA_STREAM_2, DMA_RX_BUFFER_SIZE);
+
+  LL_DMA_EnableStream(DMA2, LL_DMA_STREAM_2);
+
+  // LL_USART_EnableIT_RXNE(USART1);
   NVIC_SetPriority(USART1_IRQn, 7);
   NVIC_EnableIRQ(USART1_IRQn);
 
@@ -219,18 +198,8 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
-  // osMessageQDef(rxQueue, 32, uint8_t);
-  // osMessageQDef(cmdQueue, 5, Command_t);
-  // // const osMessageQDef_t q_def_cmdQueue = { 5, Command_t, NULL, NULL };
-  // osMessageQDef(txQueue, 5, TxMessage_t);
 
-  // rxQueueHandle = osMessageCreate(osMessageQ(rxQueue), NULL);
-  // cmdQueueHandle = osMessageCreate(osMessageQ(cmdQueue), NULL);
-  // // cmdQueueHandle = xQueueCreate(q_def_cmdQueue.queue_sz, q_def_cmdQueue.item_sz);
-  // txQueueHandle  = osMessageCreate(osMessageQ(txQueue), NULL);
-  UART1_SendString("STM32 LL UART ready!\r\n");
-
-  rxQueueHandle  = xQueueCreate(32, sizeof(uint8_t));
+  rxQueueHandle  = xQueueCreate(32, sizeof(uint16_t));
   if (rxQueueHandle == NULL) 
   {
     UART1_SendString("UartRxTask Queue create FAILED\r\n");
@@ -258,24 +227,11 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   osThreadDef(uartRxTask, UartRxTask, osPriorityNormal, 0, 256);
-  // const osThreadDef_t t_def_uartRxTask = { "uartRxTask", UartRxTask, osPriorityNormal, 0, 256, NULL, NULL };
   uartRxTaskHandle = osThreadCreate(osThread(uartRxTask), NULL);
   if (uartRxTaskHandle == NULL)
   {
     UART1_SendString("uartRxTaskHandle: FAIL\r\n");
   }
-  // if(xTaskCreate(
-  //     (TaskFunction_t)t_def_uartRxTask->pthread,
-  //     (const portCHAR *)t_def_uartRxTask->name,
-  //     t_def_uartRxTask->stacksize, 
-  //     NULL, 
-  //     makeFreeRtosPriority(t_def_uartRxTask->tpriority),
-  //     &uartRxTaskHandle
-  // ) != pdPASS)
-  // {
-  //   // Error: errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY
-  //   Error_Handler();
-  // }
 
   /**
   | Компонент       | Памʼять     |
@@ -303,7 +259,6 @@ int main(void)
 
   /* Start scheduler */
   osKernelStart();
-  // vTaskStartScheduler();
 
   /* We should never get here as control is now taken by the scheduler */
 
@@ -487,6 +442,31 @@ static void MX_USART1_UART_Init(void)
   GPIO_InitStruct.Alternate = LL_GPIO_AF_7;
   LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /* USART1 DMA Init */
+
+  /* USART1_RX Init */
+  LL_DMA_SetChannelSelection(DMA2, LL_DMA_STREAM_2, LL_DMA_CHANNEL_4);
+
+  LL_DMA_SetDataTransferDirection(DMA2, LL_DMA_STREAM_2, LL_DMA_DIRECTION_PERIPH_TO_MEMORY);
+
+  LL_DMA_SetStreamPriorityLevel(DMA2, LL_DMA_STREAM_2, LL_DMA_PRIORITY_LOW);
+
+  LL_DMA_SetMode(DMA2, LL_DMA_STREAM_2, LL_DMA_MODE_CIRCULAR);
+
+  LL_DMA_SetPeriphIncMode(DMA2, LL_DMA_STREAM_2, LL_DMA_PERIPH_NOINCREMENT);
+
+  LL_DMA_SetMemoryIncMode(DMA2, LL_DMA_STREAM_2, LL_DMA_MEMORY_INCREMENT);
+
+  LL_DMA_SetPeriphSize(DMA2, LL_DMA_STREAM_2, LL_DMA_PDATAALIGN_BYTE);
+
+  LL_DMA_SetMemorySize(DMA2, LL_DMA_STREAM_2, LL_DMA_MDATAALIGN_BYTE);
+
+  LL_DMA_DisableFifoMode(DMA2, LL_DMA_STREAM_2);
+
+  /* USART1 interrupt Init */
+  NVIC_SetPriority(USART1_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),5, 0));
+  NVIC_EnableIRQ(USART1_IRQn);
+
   /* USER CODE BEGIN USART1_Init 1 */
 
   /* USER CODE END USART1_Init 1 */
@@ -501,8 +481,26 @@ static void MX_USART1_UART_Init(void)
   LL_USART_ConfigAsyncMode(USART1);
   LL_USART_Enable(USART1);
   /* USER CODE BEGIN USART1_Init 2 */
+  LL_USART_EnableIT_IDLE(USART1);
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* Init with LL driver */
+  /* DMA controller clock enable */
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA2);
+
+  /* DMA interrupt init */
+  /* DMA2_Stream2_IRQn interrupt configuration */
+  NVIC_SetPriority(DMA2_Stream2_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),5, 0));
+  NVIC_EnableIRQ(DMA2_Stream2_IRQn);
 
 }
 
@@ -849,64 +847,85 @@ static void MX_GPIO_Init(void)
 void UartRxTask(void const * argument)
 {
   (void)argument;
-
   UART1_SendString("UartRxTask started\r\n");
 
-  for(;;)
+  uint16_t oldPos = 0;
+  uint16_t newPos;
+
+  for (;;)
   {
-	  // 1. hello							- wrong
-	  // 2. (OK)							- wrong
-	  // 3. (hellohellohellohellohello		- wrong
-	  // 4. )OK)							- wrong
-	  // 5. ((ON)							- wrong
-	  // 6. (ON)							- good
-    uint8_t rx;
-    // UART1_SendString("111\r\n");
-    if (xQueueReceive(rxQueueHandle, &rx, portMAX_DELAY) == pdPASS)
+    if (xQueueReceive(rxQueueHandle, &newPos, portMAX_DELAY) == pdPASS)
     {
-      // UART1_SendString("222\r\n");
-      if (rx == '(') 	// Check if symbol is start of command
+      newPos = DMA_RX_BUFFER_SIZE - LL_DMA_GetDataLength(DMA2, LL_DMA_STREAM_2);
+
+      if (newPos > oldPos)
       {
-        if (start_flag == 1) 	// If we already started our command
+        for (uint16_t i = oldPos; i < newPos; i++)
         {
-          cleanupBuffers(); 	// Clean
-          continue;			// Command is wrong, continue to listen on commands
+          process_byte(dmaRxBuffer[i]);
         }
-        start_flag = 1;		// Good, it is a start of command
       }
-      if (start_flag == 0)		// If first symbol is not a start of command
+      else if (newPos < oldPos)
       {
-        continue;				// Skip and continue to listen on commands
-      }
-      if (rx == ')') 	// If we reach end of command
-      {
-        end_flag = 1;
+        for (uint16_t i = oldPos; i < DMA_RX_BUFFER_SIZE; i++)
+        {
+          process_byte(dmaRxBuffer[i]);
+        }
+        for (uint16_t i = 0; i < newPos; i++)
+        {
+          process_byte(dmaRxBuffer[i]);
+        }
       }
 
-      if (cmdIndex < CMD_BUFFER_SIZE - 1)	// We have limited buffer size
-      {
-        cmdBuffer[cmdIndex++] = rx;
-        cmdBuffer[cmdIndex] = '\0';
-      }
-      else // If we got too many symbols, clean and continue to listen on commands
-      {
-        cleanupBuffers();
-        continue;
-      }
-      
-      if (start_flag == 1 && end_flag == 1)					// If we saved full command
-      {
-        Command_t command;
-        strncpy(command.data, cmdBuffer, CMD_BUFFER_SIZE);
-        
-        if (xQueueSend(cmdQueueHandle, &command, 0) != pdPASS)
-        {
-          UART1_SendString("cmdQueue FULL\r\n");
-        }
-
-        cleanupBuffers();									// After we got command, we clear and continue to listen on new commands
-      }
+      oldPos = newPos;
     }
+  }
+}
+
+static void process_byte(uint8_t rx)
+{ 
+  if (rx == '(')
+  {
+    if (start_flag == 1)
+    {
+      cleanupBuffers();
+      return;
+    }
+    start_flag = 1;
+  }
+
+  if (start_flag == 0)
+  {
+    return;
+  }
+
+  if (rx == ')')
+  {
+    end_flag = 1;
+  }
+
+  if (cmdIndex < CMD_BUFFER_SIZE - 1)
+  {
+    cmdBuffer[cmdIndex++] = rx;
+    cmdBuffer[cmdIndex] = '\0';
+  }
+  else
+  {
+    cleanupBuffers();
+    return;
+  }
+
+  if (start_flag == 1 && end_flag == 1)
+  {
+    Command_t command;
+    strncpy(command.data, cmdBuffer, CMD_BUFFER_SIZE);
+
+    if (xQueueSend(cmdQueueHandle, &command, 0) != pdPASS)
+    {
+      UART1_SendString("cmdQueue FULL\r\n");
+    }
+
+    cleanupBuffers();
   }
 }
 
@@ -987,95 +1006,95 @@ void UartTxTask(void const * argument)
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void const * argument)
-{
-  /* USER CODE BEGIN 5 */
-  (void)argument;
-  /* Infinite loop */
-  for(;;)
-  {
-	  // 1. hello							- wrong
-	  // 2. (OK)							- wrong
-	  // 3. (hellohellohellohellohello		- wrong
-	  // 4. )OK)							- wrong
-	  // 5. ((ON)							- wrong
-	  // 6. (ON)							- good
-	 if (LL_USART_IsActiveFlag_RXNE(USART1))
-	 {
-		 uint8_t rx = LL_USART_ReceiveData8(USART1);
+// void StartDefaultTask(void const * argument)
+// {
+//   /* USER CODE BEGIN 5 */
+//   (void)argument;
+//   /* Infinite loop */
+//   for(;;)
+//   {
+// 	  // 1. hello							- wrong
+// 	  // 2. (OK)							- wrong
+// 	  // 3. (hellohellohellohellohello		- wrong
+// 	  // 4. )OK)							- wrong
+// 	  // 5. ((ON)							- wrong
+// 	  // 6. (ON)							- good
+// 	 if (LL_USART_IsActiveFlag_RXNE(USART1))
+// 	 {
+// 		 uint8_t rx = LL_USART_ReceiveData8(USART1);
 
-		 if (rx == '(') 	// Check if symbol is start of command
-		 {
-			 if (start_flag == 1) 	// If we already started our command
-			 {
-				 cleanupBuffers(); 	// Clean
-				 continue;			// Command is wrong, continue to listen on commands
-			 }
-			 start_flag = 1;		// Good, it is a start of command
-		 }
-		 if (start_flag == 0)		// If first symbol is not a start of command
-		 {
-			 continue;				// Skip and continue to listen on commands
-		 }
-		 if (rx == ')') 	// If we reach end of command
-		 {
-			 end_flag = 1;
-		 }
+// 		 if (rx == '(') 	// Check if symbol is start of command
+// 		 {
+// 			 if (start_flag == 1) 	// If we already started our command
+// 			 {
+// 				 cleanupBuffers(); 	// Clean
+// 				 continue;			// Command is wrong, continue to listen on commands
+// 			 }
+// 			 start_flag = 1;		// Good, it is a start of command
+// 		 }
+// 		 if (start_flag == 0)		// If first symbol is not a start of command
+// 		 {
+// 			 continue;				// Skip and continue to listen on commands
+// 		 }
+// 		 if (rx == ')') 	// If we reach end of command
+// 		 {
+// 			 end_flag = 1;
+// 		 }
 
-		 if (cmdIndex < CMD_BUFFER_SIZE - 1)	// We have limited buffer size
-		 {
-			cmdBuffer[cmdIndex++] = rx;
-			cmdBuffer[cmdIndex] = '\0';
-		 }
-		 else // If we got too many symbols, clean and continue to listen on commands
-		 {
-			 cleanupBuffers();
-			 continue;
-		 }
+// 		 if (cmdIndex < CMD_BUFFER_SIZE - 1)	// We have limited buffer size
+// 		 {
+// 			cmdBuffer[cmdIndex++] = rx;
+// 			cmdBuffer[cmdIndex] = '\0';
+// 		 }
+// 		 else // If we got too many symbols, clean and continue to listen on commands
+// 		 {
+// 			 cleanupBuffers();
+// 			 continue;
+// 		 }
 
-		 if (start_flag == 1 && end_flag == 1)					// If we saved full command
-		 {
-			 if (strcmp(cmdBuffer, "(ON)") == 0)
-			 {
-				 if (led_on == 1)
-				 {
-					 UART1_SendString("Already ON\r\n");
-				 }
-				 else
-				 {
-					 LL_GPIO_SetOutputPin(GPIOG, LL_GPIO_PIN_13);
-					 UART1_SendString("LED ON\r\n");
-					 led_on = 1;
-				 }
-			 }
-			 else if (strcmp(cmdBuffer, "(OFF)") == 0)
-			 {
-				 if (led_on == 0)
-				 {
-					 UART1_SendString("Already OFF ----33-- \r\n");
-				 }
-				 else
-				 {
-					LL_GPIO_ResetOutputPin(GPIOG, LL_GPIO_PIN_13);
-					UART1_SendString("LED OFF\r\n");
-					led_on = 0;
-				 }
-			 }
-			 else if (strcmp(cmdBuffer, "()") == 0)				// Command is empty, means we got only ( and ) in a row
-			 {
-				UART1_SendString("Command is empty\r\n");
-			 }
-			 else
-			 {
-				UART1_SendString("Wrong command\r\n");
-			 }
+// 		 if (start_flag == 1 && end_flag == 1)					// If we saved full command
+// 		 {
+// 			 if (strcmp(cmdBuffer, "(ON)") == 0)
+// 			 {
+// 				 if (led_on == 1)
+// 				 {
+// 					 UART1_SendString("Already ON\r\n");
+// 				 }
+// 				 else
+// 				 {
+// 					 LL_GPIO_SetOutputPin(GPIOG, LL_GPIO_PIN_13);
+// 					 UART1_SendString("LED ON\r\n");
+// 					 led_on = 1;
+// 				 }
+// 			 }
+// 			 else if (strcmp(cmdBuffer, "(OFF)") == 0)
+// 			 {
+// 				 if (led_on == 0)
+// 				 {
+// 					 UART1_SendString("Already OFF ----33-- \r\n");
+// 				 }
+// 				 else
+// 				 {
+// 					LL_GPIO_ResetOutputPin(GPIOG, LL_GPIO_PIN_13);
+// 					UART1_SendString("LED OFF\r\n");
+// 					led_on = 0;
+// 				 }
+// 			 }
+// 			 else if (strcmp(cmdBuffer, "()") == 0)				// Command is empty, means we got only ( and ) in a row
+// 			 {
+// 				UART1_SendString("Command is empty\r\n");
+// 			 }
+// 			 else
+// 			 {
+// 				UART1_SendString("Wrong command\r\n");
+// 			 }
 
-			 cleanupBuffers();									// After we got command, we continue to listen on commands
-		 }
-	 }
-  }
-  /* USER CODE END 5 */
-}
+// 			 cleanupBuffers();									// After we got command, we continue to listen on commands
+// 		 }
+// 	 }
+//   }
+//   /* USER CODE END 5 */
+// }
 
 /**
   * @brief  This function is executed in case of error occurrence.

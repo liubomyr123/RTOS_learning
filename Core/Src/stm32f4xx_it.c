@@ -24,6 +24,8 @@
 #include "task.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <string.h>
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,7 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+// #define DMA_RX_BUFFER_SIZE 64
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,7 +45,9 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+extern QueueHandle_t rxQueueHandle;
+// extern uint8_t dmaRxBuffer[DMA_RX_BUFFER_SIZE];
+// extern uint16_t oldPos;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -180,6 +184,93 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32f4xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles USART1 global interrupt.
+  */
+void USART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART1_IRQn 0 */
+  // if (LL_USART_IsActiveFlag_IDLE(USART1))
+  // {
+  //   volatile uint32_t tmp;
+
+  //   tmp = USART1->SR;
+  //   tmp = USART1->DR;
+  //   (void)tmp;
+
+  //   LL_USART_ClearFlag_IDLE(USART1);
+
+  //   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+  //   uint16_t pos = DMA_RX_BUFFER_SIZE - LL_DMA_GetDataLength(DMA2, LL_DMA_STREAM_2);
+
+  //   UartFrame_t frame;
+  //   if (pos != oldPos)
+  //   {
+  //     if (pos > oldPos)
+  //     {
+  //       // normal case
+  //       frame.len = pos - oldPos;
+  //       memcpy(frame.data, &dmaRxBuffer[oldPos], frame.len);
+  //     }
+  //     else
+  //     {
+  //       // wrap-around case
+  //       frame.len = (DMA_RX_BUFFER_SIZE - oldPos);
+  //       memcpy(frame.data, &dmaRxBuffer[oldPos], frame.len);
+
+  //       if (pos > 0)
+  //       {
+  //         memcpy(&frame.data[frame.len], &dmaRxBuffer[0], pos);
+  //         frame.len += pos;
+  //       }
+  //     }
+
+  //     oldPos = pos;
+
+  //     xQueueSendFromISR(rxQueueHandle, &frame, &xHigherPriorityTaskWoken);
+  //   }
+
+  //   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  // }
+  if (LL_USART_IsActiveFlag_IDLE(USART1))
+  {
+    volatile uint32_t tmp;
+
+    tmp = USART1->SR;
+    tmp = USART1->DR;
+    (void)tmp;
+
+    LL_USART_ClearFlag_IDLE(USART1);
+
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    // uint16_t pos = DMA_RX_BUFFER_SIZE - LL_DMA_GetDataLength(DMA2, LL_DMA_STREAM_2);
+    uint16_t flag = 1;
+    xQueueSendFromISR(rxQueueHandle, &flag, &xHigherPriorityTaskWoken);
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  }
+
+  /* USER CODE END USART1_IRQn 0 */
+  /* USER CODE BEGIN USART1_IRQn 1 */
+
+  /* USER CODE END USART1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA2 stream2 global interrupt.
+  */
+void DMA2_Stream2_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA2_Stream2_IRQn 0 */
+
+  /* USER CODE END DMA2_Stream2_IRQn 0 */
+  /* USER CODE BEGIN DMA2_Stream2_IRQn 1 */
+
+  /* USER CODE END DMA2_Stream2_IRQn 1 */
+}
 
 /* USER CODE BEGIN 1 */
 
